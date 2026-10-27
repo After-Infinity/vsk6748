@@ -48,7 +48,7 @@ vsk.fir("lowpass", fs=8000, cutoff=1000).write("main.c")         # ADC1 -> FIR -
 ## Install
 
 ```bash
-git clone https://github.com/<your-username>/vsk6748.git
+git clone https://github.com/After-Infinity/vsk6748
 cd vsk6748
 pip install .
 ```
@@ -56,7 +56,7 @@ pip install .
 Or install straight from GitHub without cloning:
 
 ```bash
-pip install git+https://github.com/<your-username>/vsk6748.git
+pip install git+https://github.com/After-Infinity/vsk6748
 ```
 
 No install at all? Put your script in the repository folder and add `sys.path.insert(0, "src")` at the top
