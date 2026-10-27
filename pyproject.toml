@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vsk6748"
+version = "1.0.0"
+description = "Arduino-style main.c generator for the VSK-6748 (TMS320C6748) DSP kit and Code Composer Studio"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = []                       # the generator itself needs nothing else
+
+[project.optional-dependencies]
+pc = ["numpy", "sounddevice"]           # only for the audio-FSK receiver (vsk6748 fsk-rx)
+
+[project.scripts]
+vsk6748 = "vsk6748.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
