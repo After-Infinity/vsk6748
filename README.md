@@ -1,325 +1,366 @@
-# vsk6748
+# vsk6748 - make programs for the VSK-6748 DSP kit with a few lines of Python
 
-**Arduino-style `main.c` generator for the VSK-6748 (TMS320C6748) DSP kit.**
-Write a few lines of Python (or Arduino-style C), run it, and copy the generated `main.c` into
-Code Composer Studio. No register hunting for the common jobs: LEDs, DIP switches, DAC, ADC,
-FIR/IIR filters, convolution/correlation demos and the audio codec.
+**You do not need to know C or the chip's registers.**
+You write 1-3 lines of Python, run it, and it creates a ready-made `main.c` file.
+You paste that file into Code Composer Studio (CCS), press the Debug button, and the board runs it.
+
+> **Honest status:** the generated code is tested on a PC against a pretend board (43 automated tests).
+> It has **not** been tested on a real board or with the TI compiler yet.
+> If something behaves oddly on the real board, see [Troubleshooting](#7-troubleshooting).
+
+---
+
+## 1. The big picture (read this first)
+
+```
+  Your Python script  --->  main.c  --->  Code Composer Studio  --->  The board
+   (my_program.py)        (a text file)      (Build, Debug, Run)     (LEDs blink, etc.)
+        ^
+   runs on your PC only,
+   never on the board
+```
+
+Three things to remember:
+
+1. **Python only writes a text file called `main.c`.** Python never runs on the board.
+2. **You copy the text of `main.c` into your CCS project.** You do not copy any Python file into CCS.
+3. Every time you change your script, you run it again and paste the new `main.c` into CCS.
+
+---
+
+## 2. What you need
+
+| You need | Why |
+|---|---|
+| A PC with **Python 3.8 or newer** | to run the script. Check with `python --version` in a terminal |
+| **Code Composer Studio (CCS)** and the kit plugged in by USB | to send the program to the board |
+| The kit's own files (`VSK_6748.h`, `evmc6748.c`, ...) from your lab or CD | **only** for DAC, ADC, filters and audio. LEDs and switches do **not** need them |
+
+You do **not** need to install anything with `pip`. See the next section.
+
+---
+
+## 3. What is in this folder?
+
+You do not need to understand every file. Only the first two rows matter.
+
+| Item | What it is | Do you touch it? |
+|---|---|---|
+| **`make_main.py`** | a ready-made script: pick one line, run it, get `main.c` | **Yes** |
+| **your own script** (for example `my_program.py`) | the script you create, see step 4 | **Yes** |
+| `examples/` | sample scripts you can copy ideas from | Look only |
+| `src/` | the library's code (this is the "code-writing machine") | **No** |
+| `tests/`, `docs/`, `pyproject.toml`, `.gitignore` | tests and project settings | **No** |
+| `README.md`, `vsk6748-GUIDE.md` | documentation | Read only |
+
+**Important:** your own scripts must live in this same folder, next to `src`.
+That is how Python finds the library without installing it.
+
+---
+
+## 4. Your first program: blink an LED
+
+This needs no extra kit files, so it is the best first test.
+
+### Step 1 - Open a terminal in this folder
+
+In VS Code: *Terminal -> New Terminal*. The prompt should show this project folder.
+
+Check Python works:
+
+```bash
+python --version
+```
+
+If it says "command not found" on Windows, try `py --version` and use `py` instead of `python` everywhere below.
+
+### Step 2 - Create your script
+
+Create a new file called `my_program.py` **in this folder** (next to `src`) and paste this:
 
 ```python
+import os, sys
+
+# These 2 lines tell Python where the library is. Do not change them.
+here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(here, "src"))
+
 import vsk6748 as vsk
 
-vsk.blink(led=1, on_ms=1000, off_ms=1000).write("main.c")        # LED blink
-vsk.dac_wave("sine", freq=1000).write("main.c")                  # sine on DAC1
-vsk.fir("lowpass", fs=8000, cutoff=1000).write("main.c")         # ADC1 -> FIR -> DAC1
+# ---- CHANGE ONLY THE NEXT LINE WHEN YOU WANT A DIFFERENT PROGRAM ----
+program = vsk.blink(led=1, on_ms=1000, off_ms=1000)
+# ----------------------------------------------------------------------
+
+out = os.path.join(here, "main.c")
+program.write(out)
+print("DONE. main.c saved at:", out)
 ```
 
-> **Status:** the generated C is compiled and run on a PC against fake hardware by 43 automated tests.
-> It has **not yet been tested on a real board or with the TI compiler**. See
-> [What is verified](#what-is-verified-and-what-is-not).
+### Step 3 - Run it
+
+```bash
+python my_program.py
+```
+
+You should see `DONE. main.c saved at: ...` and a new file `main.c` appears in the folder.
+
+### Step 4 - Put it into Code Composer Studio
+
+1. Open `main.c` in VS Code, press `Ctrl+A` (select all), then `Ctrl+C` (copy).
+2. In CCS, open the `main.c` of your CCS project, press `Ctrl+A`, then `Ctrl+V` (paste over everything).
+3. Click **Build** (hammer icon), then **Debug** (bug icon), then **Resume** (press `F8`).
+
+**LED 1 on the board now blinks once per second.**
+
+Do not have a CCS project yet? See [Make a CCS project](#make-a-ccs-project-one-time).
 
 ---
 
-## Contents
+## 5. Make it do something else
 
-1. [Requirements](#requirements)
-2. [Install](#install)
-3. [Quick start](#quick-start)
-4. [Calibrate the timing once](#calibrate-the-timing-once)
-5. [Ready-made presets](#ready-made-presets)
-6. [Write your own Arduino-style sketch](#write-your-own-arduino-style-sketch)
-7. [Command line](#command-line)
-8. [ADC and DAC support](#adc-and-dac-support)
-9. [Running main.c in Code Composer Studio](#running-mainc-in-code-composer-studio)
-10. [What is verified and what is not](#what-is-verified-and-what-is-not)
-11. [Troubleshooting](#troubleshooting)
-12. [Project layout and tests](#project-layout-and-tests)
+### Option A - pick another ready-made program (easiest)
 
----
+In `my_program.py`, replace only the `program = ...` line, run the script again, and paste the new `main.c` into CCS.
 
-## Requirements
+**LEDs and switches (no kit files needed)**
 
-| Item | Needed for |
+| Line to use | What the board does |
 |---|---|
-| Python 3.8 or newer | the library (no other Python packages needed) |
-| Code Composer Studio (CCS) and the kit connected over its XDS100v2 USB port | building and running `main.c` |
-| **The VSK-6748 common files** from your lab or the kit CD (`VSK_6748.h`, `evmc6748.c`, ...) | **DAC, ADC and audio only.** LEDs, switches, timing and the algorithm demos do not need them |
-| `numpy` and `sounddevice` (optional) | only the board-to-PC audio link receiver |
+| `vsk.blink(led=2, on_ms=500, off_ms=500)` | LED 2 blinks (LED number 1 to 8) |
+| `vsk.chase(on_ms=300, off_ms=300)` | LEDs light up one after another |
+| `vsk.knight_rider(step_ms=80)` | one light sweeps back and forth |
+| `vsk.switch_to_led()` | LED n copies DIP switch n |
+| `vsk.binary_counter(step_ms=500)` | the 8 LEDs count in binary |
 
-## Install
+**Signals (need the kit files, see [section 6](#6-programs-that-need-the-kits-own-files))**
 
-```bash
-git clone https://github.com/After-Infinity/vsk6748
-cd vsk6748
-pip install .
-```
-
-Or install straight from GitHub without cloning:
-
-```bash
-pip install git+https://github.com/After-Infinity/vsk6748
-```
-
-No install at all? Put your script in the repository folder and add `sys.path.insert(0, "src")` at the top
-(`make_main.py` already does this).
-
-Check that it works:
-
-```bash
-python -m vsk6748 list      # all presets
-python -m vsk6748 info      # what is verified on the hardware
-```
-
-## Quick start
-
-1. Write a script, for example `my_blink.py`:
-
-   ```python
-   import vsk6748 as vsk
-   vsk.blink(led=1, on_ms=1000, off_ms=1000).write("main.c")
-   ```
-
-2. Run it: `python my_blink.py`. This creates `main.c`.
-3. Open `main.c`, select all, copy, and paste it over the `main.c` in your CCS project.
-4. In CCS: **Build, Debug, Resume (F8)**. LED1 blinks.
-
-Prefer not to write Python? Two other ways to get the same file:
-
-```bash
-python -m vsk6748 gen blink --param led=1 --param on_ms=1000 --param off_ms=1000 -o main.c
-```
-
-or open `make_main.py`, keep one line of its CHOICE section active, and run `python make_main.py`.
-
-## Calibrate the timing once
-
-Delays and sample rates are counted in CPU clock ticks, and the library does not know your real CPU clock.
-The default is 30 MHz, which may be wrong for your setup. Fix it once:
-
-1. Generate and run the calibration program: `python -m vsk6748 gen calibration -o main.c`.
-   LED1 stays on for "10 seconds" (by the assumed clock).
-2. Time one "on" period with a stopwatch, for example 12.5 s.
-3. Run `python -m vsk6748 calibrate 30000000 10 12.5`. It prints the real clock (here `24000000`).
-4. Pass it everywhere: `vsk.blink(cpu_hz=24_000_000)`, or `cpu_hz=` on any preset or `Sketch`.
-
-## Ready-made presets
-
-Every function returns a `Sketch`. Call `.write("main.c")` to create the file
-(it also prints warnings and notes, for example when the kit files are needed).
-`cpu_hz` is accepted by all of them (default `30_000_000`).
-
-### LEDs and DIP switches (no kit files needed)
-
-| Function | What it does |
+| Line to use | What the board does |
 |---|---|
-| `blink(led=1, on_ms=1000, off_ms=1000)` | one LED (1 to 8) on and off |
-| `chase(on_ms=300, off_ms=300)` | each LED turns on then off, LED1 to LED8 |
-| `knight_rider(step_ms=80)` | one LED sweeps back and forth |
-| `switch_to_led()` | LED n copies DIP switch n |
-| `binary_counter(step_ms=500)` | the 8 LEDs count in binary |
-| `calibration(seconds=10)` | for [timing calibration](#calibrate-the-timing-once) |
+| `vsk.dac_wave("sine", freq=1000)` | sine wave on DAC1 (also `"square"`, `"triangle"`, `"sawtooth"`) |
+| `vsk.adc_to_dac()` | the signal on ADC1 comes out on DAC1 |
+| `vsk.fir("lowpass", fs=8000, cutoff=1000)` | ADC1 -> low-pass filter -> DAC1 |
+| `vsk.iir("lowpass", fs=8000, cutoff=1000, order=4)` | same, with an IIR filter |
+| `vsk.audio_loopback(gain=3)` | microphone to the output jack |
+| `vsk.audio_tone(freq=1000)` | steady tone from the output jack |
+| `vsk.mic_meter()` | microphone loudness shown on the 8 LEDs |
 
-### DAC and ADC (need the kit files)
+**Maths demos (no kit files; results print in the CCS console)**
 
-| Function | What it does |
+| Line to use | What it does |
 |---|---|
-| `dac_wave(kind="sine", freq=1000, samples=64, amplitude=2047, offset=2048)` | `kind` is `sine`, `sawtooth`, `square` or `triangle`, on **DAC1** |
-| `adc_to_dac()` | ADCLOOP: the signal on **ADC1 (CH1)** appears on DAC1 |
+| `vsk.convolution([1, 2, 3, 4], [1, -1, 2])` | linear convolution |
+| `vsk.correlation([1, 2, 3, 4], [2, 0, 1])` | cross-correlation |
 
-Values are 12-bit (0 to 4095, about 0 to 3.3 V). The DAC update rate is limited by the SPI transfer speed.
-If `freq x samples` is too high the library prints a note, and the real frequency will be lower.
+### Option B - write your own logic (Arduino style)
 
-### Filters (need the kit files)
+If you know Arduino, this will feel familiar. You write a **setup** (runs once) and a **loop** (repeats forever).
+The code inside the triple quotes is C. Copy the pattern and change the lines.
+
+Replace the `program = ...` line in `my_program.py` with:
 
 ```python
-vsk.fir("lowpass",  fs=8000, cutoff=1000, taps=45)          # lowpass, highpass, bandpass, bandstop
-vsk.fir("bandpass", fs=8000, cutoff=(1000, 2000), taps=65)
-vsk.iir("lowpass",  fs=8000, cutoff=1000, order=4)          # order 2 or 4 for LP/HP, 2 for BP/BS
-vsk.iir("bandstop", fs=8000, cutoff=(800, 1600))
+program = vsk.Sketch(cpu_hz=30_000_000)
+program.add_setup("pinMode(LED1, OUTPUT); pinMode(LED2, OUTPUT);")
+program.add_loop("""
+    digitalWrite(LED1, HIGH);
+    digitalWrite(LED2, LOW);
+    delay(500);
+    digitalWrite(LED1, LOW);
+    digitalWrite(LED2, HIGH);
+    delay(500);
+""")
 ```
 
-The filter is designed in Python (Hamming-window FIR, RBJ-biquad IIR) and then runs on the board:
-**ADC1, filter, DAC1** at a fixed sample rate `fs`, timed with the CPU cycle counter, so `cpu_hz` must be
-calibrated. The input is assumed to be centred on mid-scale (code 2048, about 1.65 V DC offset) and the
-output is clamped to 0 to 4095.
-
-Check a design on the PC before running it:
+Example: LED 1 follows switch 1.
 
 ```python
-h = vsk.fir_quantize(vsk.fir_design("lowpass", 8000, 1000, 45))
-print(vsk.freq_response(h, [32768.0], 8000, 3000))          # gain at 3 kHz
+program = vsk.Sketch()
+program.add_setup("pinMode(LED1, OUTPUT); pinMode(SW1, INPUT);")
+program.add_loop("digitalWrite(LED1, digitalRead(SW1));")
 ```
 
-`vsk.fir_reference(h, samples)` and `vsk.iir_reference(sections, samples)` compute exactly what the board
-computes, so you can compare the DAC output with Python.
+(The switch may be reversed, so if LED 1 is on when the switch is "off", use `!digitalRead(SW1)`.)
 
-### Algorithm demos (plain C; results print in the CCS console; they also run in the CCS simulator)
+**Commands you can use inside `add_setup` / `add_loop`:**
 
-```python
-vsk.convolution([1, 2, 3, 4], [1, -1, 2])                        # linear
-vsk.convolution([1, 2, 3, 4], [1, 1, 1], circular=True, n=4)
-vsk.correlation([1, 2, 3, 4], [2, 0, 1])                         # cross-correlation
-vsk.correlation([1, 2, 3, 4])                                    # auto-correlation
-```
-
-The expected answers are available in Python: `vsk.linear_convolution`, `vsk.circular_convolution`,
-`vsk.cross_correlation`, `vsk.auto_correlation`.
-
-### Audio codec (need the kit files; microphone on MIC IN, output on SKR OUT)
-
-| Function | What it does |
+| Command | Meaning |
 |---|---|
-| `audio_loopback(gain=3)` | mic to output jack (the lab manual's Mic and Speaker experiment) |
-| `audio_tone(freq=1000, amplitude=12000, fs=48000)` | steady sine from the output jack |
-| `mic_meter(divisor=400, loopback_gain=3)` | mic level on the 8 LEDs, plus a buffer `mic_buf` to graph in CCS |
-| `audio_fsk(text="HELLO DSP", baud=200)` | sends text as audio tones to a PC line-in |
+| `pinMode(LED1, OUTPUT)` | make a pin an output. Do this in setup. For switches use `INPUT` |
+| `digitalWrite(LED1, HIGH)` / `LOW` | turn an LED on / off |
+| `digitalRead(SW1)` | read a DIP switch (0 or 1) |
+| `delay(500)` | wait 500 milliseconds |
+| `delayMicroseconds(100)` | wait 100 microseconds |
+| `millis()` | milliseconds since the program started |
+| `printf("x = %d\n", x)` | print text in the CCS console |
+| `LED1` ... `LED8`, `SW1` ... `SW8` | the 8 LEDs and 8 DIP switches |
+| `ledWrite(n, v)` / `ledsWrite(mask)` | set LED n, or all 8 LEDs at once (`ledsWrite(0xFF)`) |
+| `switchesRead()` | read all 8 switches as one number |
+| `kitInit()` then `dacWrite(0..4095)`, `adcRead()` | DAC / ADC (need kit files) |
+| `audioInit()` then `audioRead()`, `audioWrite(v)` | audio codec (need kit files) |
 
-**Seeing the microphone without a speaker:** use `mic_meter()`. In CCS open *Tools, Graph, Single Time*, set the
-start address to `mic_buf`, type to 16-bit signed integer, length 512.
-
-**Board to PC data link:** run `audio_fsk("HELLO")`, connect SKR OUT to the PC line-in, then on the PC:
-
-```bash
-pip install numpy sounddevice
-python -m vsk6748 fsk-rx --seconds 10      # prints: RECEIVED: HELLO
-```
-
-The receiver detects the codec's real sample rate on its own. Turn off noise suppression and audio
-enhancements for that input in your operating system.
-
-## Write your own Arduino-style sketch
+Variables go in `add_globals`:
 
 ```python
-s = vsk.Sketch(cpu_hz=30_000_000)
-s.add_globals("int count = 0;")
-s.add_setup("pinMode(LED1, OUTPUT);")
-s.add_loop("digitalWrite(LED1, count++ & 1); delay(500);")
-s.write("main.c")
+program.add_globals("int count = 0;")
+program.add_loop("count++; printf(\"count = %d\\n\", count); delay(1000);")
 ```
 
-Or put `setup()` and `loop()` in a text file (any extension, for example `my.ino`):
+### Option C - write the sketch as a plain text file
+
+Create `my.ino`:
 
 ```c
 void setup() { pinMode(LED1, OUTPUT); }
-void loop()  { digitalWrite(LED1, HIGH); delay(1000); digitalWrite(LED1, LOW); delay(1000); }
+void loop()  { digitalWrite(LED1, HIGH); delay(200); digitalWrite(LED1, LOW); delay(200); }
 ```
+
+and use this line in `my_program.py`:
 
 ```python
-vsk.Sketch.from_file("my.ino").write("main.c")
+program = vsk.Sketch.from_file(os.path.join(here, "my.ino"))
 ```
 
-`loop()` runs forever, like Arduino. Call `pinMode`, `ledsInit`, `switchesInit`, `kitInit` or `audioInit` in
-`setup()`; the library warns if you forget.
+---
 
-### Functions you can use inside a sketch
+## 6. Programs that need the kit's own files
 
-| Group | Functions |
+DAC, ADC, filters and audio use code that came with your kit (setup for the SPI chip and the audio codec).
+This library cannot replace it, so these files must be inside your CCS project:
+
+1. Find the kit's **common files** from your lab or CD: `VSK_6748.h`, `evmc6748.c` and the other `.c` files.
+2. Copy the `.c` files into your CCS project folder.
+3. In CCS: *Project -> Properties -> Build -> C6000 Compiler -> Include Options*, and add the folder that contains `VSK_6748.h`.
+4. Paste the generated `main.c`. Do **not** also paste a whole lab-manual experiment, because that has its own `main()`.
+
+Only **DAC1** and **ADC channel 1** are supported (the channels the lab manual uses).
+Values are 12-bit numbers, 0 to 4095, which is about 0 V to 3.3 V.
+Filters expect the input to be centred at about 1.65 V (value 2048).
+
+### Make a CCS project (one time)
+
+1. Connect and power the kit. In CCS, your target configuration (XDS100v2, TMS320C6748) must pass *Test Connection*.
+2. *File -> New -> CCS Project*. Target: **TMS320C6748**. Template: **Empty Project (with main.c)**.
+3. Now you can paste into its `main.c` as shown in step 4.
+
+---
+
+## 7. Troubleshooting
+
+### Python and the terminal
+
+| Problem | Fix |
 |---|---|
-| always | `delay(ms)`, `delayMicroseconds(us)`, `millis()`, `cyclesNow()`, `cyclesWaitUntil(t)`, `printf(...)` |
-| pins | `LED1`..`LED8`, `SW1`..`SW8`, `pinMode(pin, INPUT/OUTPUT)`, `digitalWrite(pin, HIGH/LOW)`, `digitalRead(pin)` |
-| LED / switch helpers | `ledsInit()`, `switchesInit()`, `ledWrite(n, v)` (n = 1..8), `ledsWrite(mask8)`, `switchesRead()` |
-| DAC / ADC | `kitInit()` first, then `dacWrite(0..4095)` and `adcRead()` |
-| audio | `audioInit()` first, then `audioRead()`, `audioWrite(v)`, `audioWriteStereo(v)` |
+| `python: command not found` | Windows: try `py`. Linux: install Python. Check with `python --version` |
+| `ModuleNotFoundError: No module named 'vsk6748'` | your script is not in the same folder as `src`. Move it there |
+| No `main.c` appears | look for the line `DONE. main.c saved at:` and open that exact path |
+| `externally-managed-environment` (Arch Linux and others) when running `pip install .` | **You do not need pip.** Use the script method above. Never use `--break-system-packages` |
 
-### `Sketch(...)` options
+### On the board
 
-| Option | Meaning |
+| Problem | Fix |
 |---|---|
-| `cpu_hz` | CPU clock in Hz, used by all timing (default 30 MHz, calibrate it) |
-| `kit` | `True`/`False` to force the DAC/ADC/audio layer; normally automatic |
-| `gpio` | `True`/`False` to force the LED/switch layer; normally automatic |
-| `pll=(0,48,1,0,1,11,5)` | seven numbers passed to the kit's `config_pll0`, as in the manual's filter experiments. This changes the CPU speed, so recalibrate `cpu_hz` |
-| `audio_rx` | `"XBUF4"` (default, what the lab manual's code reads) or `"RBUF4"` (the receive-buffer name in the TI manual; try it if the microphone reads zero). For a preset: `s = vsk.mic_meter(); s.audio_rx = "RBUF4"` |
+| Build error: `cannot open VSK_6748.h` | add the kit's common folder in *Include Options* ([section 6](#6-programs-that-need-the-kits-own-files)) |
+| Linker error: `undefined reference Spi_inti` or `MCASP_init` | the kit's `.c` files are not in your CCS project |
+| Build error: `redefinition of delay / millis` | a name clashes with the kit's headers. Report the name |
+| Delays are too long or too short | [calibrate the timing](#8-calibrate-the-timing-do-this-once) |
+| LEDs do not change | in CCS open *Memory Browser* at address `0x01E260B4` and see whether the value changes |
+| LED order looks wrong, or the switch is reversed | known unverified detail. Swap the LED number in your script, or use `!digitalRead(SW1)` |
+| Microphone always reads 0 | add this after creating the program: `program.audio_rx = "RBUF4"` |
+| DAC wave frequency is lower than asked | lower `freq` or `samples`. The SPI write speed is the limit |
+| Filter output looks clipped or shifted | the input must be centred around 1.65 V (value 2048) |
+| CCS error `-151` (SC_ERR_FTDI_OPEN) | USB or driver problem: try another cable or port, power-cycle the board, close other debug sessions, reinstall the XDS100 driver |
 
-### What the generated `main.c` contains
+---
 
-A small board layer (only the parts your sketch uses), then your `setup()` and `loop()`, then a `main()` that
-initialises the board, calls `setup()` once and `loop()` forever. Everything is in one file.
+## 8. Calibrate the timing (do this once)
 
-## Command line
+The library does not know your board's real CPU speed. It assumes 30 MHz, which may be wrong.
+So "1 second" might really take 1.25 seconds. To fix it:
 
-| Command | What it does |
+1. In `my_program.py` use: `program = vsk.calibration(seconds=10)`. Run it, paste into CCS, Debug, Resume.
+2. LED1 turns on. Time with a stopwatch how long it stays on, for example 12.5 seconds.
+3. In the terminal, from this folder (no install needed):
+
+   ```bash
+   PYTHONPATH=src python -m vsk6748 calibrate 30000000 10 12.5
+   ```
+
+   (Windows PowerShell: `$env:PYTHONPATH="src"; python -m vsk6748 calibrate 30000000 10 12.5`)
+
+   It prints the real clock, here `24000000`.
+4. Put that number in your program, for example `vsk.blink(led=1, cpu_hz=24_000_000)`.
+   Every program accepts `cpu_hz=`.
+
+---
+
+## 9. Word list
+
+| Word | Meaning |
 |---|---|
-| `python -m vsk6748 list` | list all presets |
-| `python -m vsk6748 info` | show what is supported and how well it is verified |
-| `python -m vsk6748 gen <preset> [--param KEY=VALUE ...] [-o main.c]` | generate `main.c` from a preset |
-| `python -m vsk6748 build my.ino [--cpu-hz N] [--kit] [-o main.c]` | wrap your own sketch file |
-| `python -m vsk6748 calibrate <current_hz> <seconds_wanted> <seconds_measured>` | compute the real CPU clock |
-| `python -m vsk6748 fsk-rx [--seconds N] [--wav file.wav]` | PC receiver for `audio_fsk` |
+| **Preset** | a ready-made program from this library, like `vsk.blink(...)` |
+| **Sketch** | a program you write yourself with `setup` and `loop` (Arduino style) |
+| **`main.c`** | the C file this library creates; the board's real program |
+| **CCS** | Code Composer Studio, TI's program that builds and sends code to the board |
+| **LED / DIP switch** | the 8 lights and 8 small slide switches on the board |
+| **DAC** | turns a number into a voltage (output) |
+| **ADC** | turns a voltage into a number (input) |
+| **`cpu_hz`** | the CPU clock speed, used for all timing |
+| **Terminal** | the text window where you type `python my_program.py` |
 
-Example: `python -m vsk6748 gen fir --param kind=lowpass --param fs=8000 --param cutoff=1000 -o main.c`.
-After `pip install` the same commands are available as plain `vsk6748 ...`.
+---
 
-## ADC and DAC support
+## 10. Advanced (optional)
 
-**Supported: ADC channel 1 and DAC channel 1**, the channels the lab manual uses in every experiment.
-`adcRead()` reads ADC1 (CH1) and `dacWrite()` writes DAC1, using the same calls as the manual's code.
+### Command line instead of a script
 
-**The kit's common files must be in your CCS project.** The SPI setup (`Spi_inti`) and the audio setup
-(`MCASP_init`, `AIC3106_init`, `I2C_init`) live there; this library calls them but cannot replace them.
-
-**Not supported:** DAC2 and ADC channels 2 and up. The manual only gives the command word for channel 1
-("refer manual" for the others) and no part numbers, so guessing would be unsafe. With the board schematic or
-the kit's common files this can be added.
-
-## Running main.c in Code Composer Studio
-
-1. Connect and power the kit. In your CCS target configuration (XDS100v2, TMS320C6748), *Test Connection* must succeed.
-2. Create a CCS project: target *C674x Floating-point DSP, TMS320C6748*, template *Empty Project (with main.c)*.
-3. **DAC, ADC and audio presets only:** add the kit's common files. Under *Project, Properties, Build, C6000 Compiler,
-   Include Options* add the folder that contains `VSK_6748.h`, and put the kit's `.c` files (for example `evmc6748.c`)
-   in the project. Do not also paste a whole lab-manual experiment listing, because it has its own `main()`.
-4. Paste the generated code over `main.c`. **Build, Debug, Resume (F8).**
-5. LED programs: watch the board. `printf` programs: open the CCS Console. Mic meter: LEDs and the `mic_buf` graph.
-
-## What is verified and what is not
-
-`python -m vsk6748 info` prints this table.
-
-| Feature | Status | Note |
-|---|---|---|
-| 8 LEDs `LED1..LED8` | verified in documents | GPIO8[8..15]; bit order vs. the D52..D59 labels not verified |
-| 8 DIP switches `SW1..SW8` | verified in documents | GPIO0[0..7]; ON may read 0 or 1 |
-| `delay` / `millis` | tested on PC | needs a calibrated `cpu_hz` |
-| DAC1 write (12-bit) | copied from the lab manual | needs the kit files; only DAC1 is documented |
-| ADC1 (CH1) read (12-bit) | copied from the lab manual | needs the kit files; only CH1 is documented |
-| FIR / IIR filters | tested on PC | 2048 DC offset assumed; sample rate set by cycle-counter timing |
-| convolution / correlation | tested on PC | plain C, also runs in the CCS simulator |
-| audio in/out | copied from the lab manual | needs the kit files; 16-bit samples and 48 kHz are assumptions |
-| audio FSK to PC | tested on PC | the PC receiver decodes the generated samples |
-| DAC2, ADC channels 2+ | not supported | command words are not in the manual |
-
-* Register offsets, the GPIO8[8..15] and GPIO0[0..7] pin-mux fields, the PSC1 GPIO module and the SYSCFG kick keys
-  match the TI TMS320C6748 Technical Reference Manual (SPRUH79C).
-* The LED and switch pin mapping and all DAC/ADC/audio calls come from the VSK-6748 lab manual.
-* **Not tested** on the real board or with the TI compiler.
-* **Unverified assumptions:** LED order vs. the physical labels, DIP-switch polarity, the codec sample rate (48 kHz),
-  the 16-bit audio sample format, and your actual CPU clock.
-
-## Troubleshooting
-
-| Problem | Try |
-|---|---|
-| Build error "redefinition of delay / millis / ..." | a name clashes with the kit's headers; open an issue with the name |
-| Build error "cannot open VSK_6748.h" | add the kit's common folder to *Include Options* |
-| Linker error "undefined reference Spi_inti / MCASP_init" | the kit's `.c` files are not in the project |
-| Delays or sample rates are wrong | [calibrate](#calibrate-the-timing-once) |
-| LEDs do not change | in CCS Memory Browser open `0x01E260B4` and see whether the value changes |
-| Microphone samples are all 0 | `audio_rx="RBUF4"` (see `Sketch` options) |
-| DAC frequency lower than asked | lower `freq` or `samples`; the SPI write is the limit |
-| Filter output looks clipped or offset | the input must be centred around 1.65 V (code 2048) |
-| CCS error -151 (SC_ERR_FTDI_OPEN) | USB or driver problem: try another cable or port, power-cycle the board, close other debug sessions, reinstall the XDS100 driver |
-
-## Project layout and tests
-
-```
-src/vsk6748/     the library (sketch.py, presets, design.py, clayers.py, cli.py, fsk_rx.py)
-tests/           43 tests; compile the generated C on the PC against fake hardware (needs gcc)
-examples/        example scripts and Arduino-style sketches
-make_main.py     edit one line, run, get main.c
-```
-
-Run the tests:
+Commands work after an install, or from this folder with `PYTHONPATH=src` in front:
 
 ```bash
-python -m unittest discover -s tests -v
+PYTHONPATH=src python -m vsk6748 list                  # all presets
+PYTHONPATH=src python -m vsk6748 info                  # what is verified on hardware
+PYTHONPATH=src python -m vsk6748 gen blink --param led=1 --param on_ms=1000 --param off_ms=1000 -o main.c
+PYTHONPATH=src python -m vsk6748 build my.ino -o main.c
+PYTHONPATH=src python -m vsk6748 fsk-rx --seconds 10   # PC receiver for audio_fsk
 ```
+
+### Real install (optional)
+
+Not needed for the steps above. On systems like Arch Linux, use a virtual environment:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install .
+```
+
+After that you can drop the two `sys.path` lines and use plain `vsk6748 ...` commands.
+Run `source .venv/bin/activate` again in each new terminal.
+
+### More presets and options
+
+- Audio over a cable to the PC: `vsk.audio_fsk("HELLO")`, then on the PC `pip install numpy sounddevice` and `python -m vsk6748 fsk-rx --seconds 10`.
+- `Sketch(...)` options: `cpu_hz`, `kit`, `gpio`, `pll`, `audio_rx`. See `vsk6748-GUIDE.md`.
+- Check a filter design on the PC before using it:
+
+  ```python
+  h = vsk.fir_quantize(vsk.fir_design("lowpass", 8000, 1000, 45))
+  print(vsk.freq_response(h, [32768.0], 8000, 3000))   # gain at 3 kHz
+  ```
+
+### Run the tests
+
+```bash
+python -m unittest discover -s tests -v      # needs gcc
+```
+
+### Support status
+
+| Feature | Status |
+|---|---|
+| 8 LEDs, 8 DIP switches | register addresses checked against the TI manual; LED order and switch polarity not verified on a real board |
+| `delay`, `millis` | tested on PC; needs a calibrated `cpu_hz` |
+| DAC1, ADC channel 1 | copied from the lab manual; needs the kit files |
+| FIR / IIR filters | tested on PC |
+| Convolution / correlation | tested on PC; also runs in the CCS simulator |
+| Audio in/out | copied from the lab manual; 48 kHz and 16-bit samples are assumptions |
+| DAC2, ADC channels 2+ | **not supported** (the manual does not give their command words) |
